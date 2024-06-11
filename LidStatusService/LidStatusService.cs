@@ -38,6 +38,5 @@ namespace LidStatusService
                 sw.WriteLine(format, arg);
             }
         }
-
     }
 }
