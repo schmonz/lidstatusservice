@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Runtime.InteropServices;
 
 namespace LidStatusService
@@ -15,6 +14,19 @@ namespace LidStatusService
 
         private IntPtr _powerSettingsNotificationHandle;
 
+        public Lid(IntPtr serviceHandle, string serviceName, Action<bool> lidEventHandler)
+        {
+            LidEventHandler = lidEventHandler;
+            RegisterEventNotifications(serviceHandle, serviceName);
+        }
+
+        ~Lid()
+        {
+            UnregisterEventNotifications();
+        }
+
+        private event Action<bool> LidEventHandler;
+
         [DllImport(@"User32", SetLastError = true, EntryPoint = "RegisterPowerSettingNotification",
             CallingConvention = CallingConvention.StdCall)]
         private static extern IntPtr RegisterPowerSettingNotification(IntPtr hRecipient, ref Guid powerSettingGuid,
@@ -28,59 +40,43 @@ namespace LidStatusService
         private static extern IntPtr RegisterServiceCtrlHandlerEx(string lpServiceName,
             ServiceControlHandlerEx serviceControlHandler, IntPtr context);
 
-        private event Action<bool> LidEventHandler;
-
-        public bool RegisterLidEventNotifications(IntPtr serviceHandle, string serviceName,
-            Action<bool> lidEventHandler)
+        private void RegisterEventNotifications(IntPtr serviceHandle, string serviceName)
         {
-            LidEventHandler = lidEventHandler;
-
             _powerSettingsNotificationHandle = RegisterPowerSettingNotification(serviceHandle,
                 ref _guidLidSwitchStateChange, DeviceNotifyServiceHandle);
 
-            var serviceCtrlHandler = RegisterServiceCtrlHandlerEx(serviceName, MessageHandler, IntPtr.Zero);
-
-            if (serviceCtrlHandler == IntPtr.Zero)
-                return false;
-
-            return _powerSettingsNotificationHandle != IntPtr.Zero;
+            RegisterServiceCtrlHandlerEx(serviceName, MessageHandler, IntPtr.Zero);
         }
 
-        public bool UnregisterLidEventNotifications()
+        private void UnregisterEventNotifications()
         {
-            return _powerSettingsNotificationHandle != IntPtr.Zero &&
-                   UnregisterPowerSettingNotification(_powerSettingsNotificationHandle);
+            if (_powerSettingsNotificationHandle != IntPtr.Zero)
+                UnregisterPowerSettingNotification(_powerSettingsNotificationHandle);
         }
 
-        private static bool IsLidEvent(int dwControl, int dwEventType, IntPtr lpEventData)
+        private static bool IsEvent(int dwControl, int dwEventType, IntPtr lpEventData)
         {
             // https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nc-winsvc-lphandler_function_ex
 
             if (dwControl != ServiceControlPowerEvent || dwEventType != PbtPowerSettingChange)
                 return false;
 
-            var ps = (PowerBroadcastSetting)Marshal.PtrToStructure(lpEventData, typeof(PowerBroadcastSetting));
-            return ps.PowerSetting == _guidLidSwitchStateChange;
+            return ExtractPowerBroadcastSetting(lpEventData).PowerSetting == _guidLidSwitchStateChange;
         }
 
-        private static bool GetLidState(IntPtr lpEventData)
+        private static bool GetState(IntPtr lpEventData)
         {
-            return ((PowerBroadcastSetting)Marshal.PtrToStructure(lpEventData, typeof(PowerBroadcastSetting))).Data !=
-                   0;
+            return 0 != ExtractPowerBroadcastSetting(lpEventData).Data;
+        }
+
+        private static PowerBroadcastSetting ExtractPowerBroadcastSetting(IntPtr lpEventData)
+        {
+            return (PowerBroadcastSetting)Marshal.PtrToStructure(lpEventData, typeof(PowerBroadcastSetting));
         }
 
         private IntPtr MessageHandler(int dwControl, int dwEventType, IntPtr lpEventData, IntPtr lpContext)
         {
-            if (!IsLidEvent(dwControl, dwEventType, lpEventData)) return IntPtr.Zero;
-
-            var isLidOpen = GetLidState(lpEventData);
-            using (var sw = new StreamWriter(@"C:\schmonz.txt", true))
-            {
-                sw.WriteLine(isLidOpen ? "lid opened" : "lid closed");
-            }
-
-            LidEventHandler?.Invoke(isLidOpen);
-
+            if (IsEvent(dwControl, dwEventType, lpEventData)) LidEventHandler?.Invoke(GetState(lpEventData));
             return IntPtr.Zero;
         }
 

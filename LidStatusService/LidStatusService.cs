@@ -37,18 +37,19 @@ namespace LidStatusService
             };
             SetServiceStatus(ServiceHandle, ref serviceStatus);
 
-            Log("{0}: service running", DateTime.Now);
-            _lid = new Lid();
-            Log("{0}: notifications registered? {1}", DateTime.Now,
-                _lid.RegisterLidEventNotifications(ServiceHandle, ServiceName, LidEventHandler));
+            Log("{0}: service starting", DateTime.Now);
+
+            _lid = new Lid(ServiceHandle, ServiceName, LidEventHandler);
+            // XXX _lid.onOpen(callback)
+            // XXX _lid.onClose(callback)
 
             serviceStatus.dwCurrentState = ServiceState.ServiceRunning;
             SetServiceStatus(ServiceHandle, ref serviceStatus);
         }
 
-        private void LidEventHandler(bool status)
+        private static void LidEventHandler(bool status)
         {
-            Log("{0}: lid status: {1}", DateTime.Now, status ? "lid opened" : "lid closed");
+            Log("{0}: lid status: {1}", DateTime.Now, status ? "opened" : "closed");
         }
 
         protected override void OnStop()
@@ -60,7 +61,7 @@ namespace LidStatusService
             };
             SetServiceStatus(ServiceHandle, ref serviceStatus);
 
-            Log("{0}: notifications unregistered? {1}", DateTime.Now, _lid.UnregisterLidEventNotifications());
+            Log("{0}: service stopping", DateTime.Now);
 
             serviceStatus.dwCurrentState = ServiceState.ServiceStopped;
             SetServiceStatus(ServiceHandle, ref serviceStatus);
@@ -75,7 +76,7 @@ namespace LidStatusService
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        public struct ServiceStatus
+        private struct ServiceStatus
         {
             public int dwServiceType;
             public ServiceState dwCurrentState;
