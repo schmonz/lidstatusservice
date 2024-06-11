@@ -15,20 +15,19 @@ namespace LidStatusService
 
         protected override void OnStart(string[] args)
         {
-            Log("{0}: Service Running", DateTime.Now);
-
+            Log("{0}: service running", DateTime.Now);
             _lid = new Lid();
+            Log("{0}: notifications registered? {1}", DateTime.Now, _lid.RegisterLidEventNotifications(ServiceHandle, ServiceName, LidEventHandler));
+        }
 
-            Action<bool> lidEventHandler = status => Log("{0}: Lid status: {1}", DateTime.Now, status);
-                
-            var registeredNotificationsSuccess = _lid.RegisterLidEventNotifications(ServiceHandle, ServiceName, lidEventHandler);
-
-            Log("{0}: Notifications registered? {1}", DateTime.Now, registeredNotificationsSuccess);
+        private void LidEventHandler(bool status)
+        {
+            Log("{0}: lid status: {1}", DateTime.Now, status ? "lid opened" : "lid closed");
         }
 
         protected override void OnStop()
         {
-            _lid.UnregisterLidEventNotifications();
+            Log("{0}: notifications unregistered? {1}", DateTime.Now, _lid.UnregisterLidEventNotifications());
         }
 
         private static void Log(string format, params object[] arg)
