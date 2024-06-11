@@ -1,6 +1,6 @@
 ﻿namespace LidStatusService
 {
-    abstract partial class ProjectInstaller
+    partial class ProjectInstaller
     {
         /// <summary>
         /// Required designer variable.
@@ -28,30 +28,32 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.serviceProcessInstaller1 = new System.ServiceProcess.ServiceProcessInstaller();
-            this.serviceInstaller1 = new System.ServiceProcess.ServiceInstaller();
+            this.LidStatusServiceProcessInstaller1 = new System.ServiceProcess.ServiceProcessInstaller();
+            this.LidStatusServiceInstaller = new System.ServiceProcess.ServiceInstaller();
             // 
-            // serviceProcessInstaller1
+            // LidStatusServiceProcessInstaller1
             // 
-            this.serviceProcessInstaller1.Account = System.ServiceProcess.ServiceAccount.LocalSystem;
-            this.serviceProcessInstaller1.Password = null;
-            this.serviceProcessInstaller1.Username = null;
+            this.LidStatusServiceProcessInstaller1.Account = System.ServiceProcess.ServiceAccount.LocalSystem;
+            this.LidStatusServiceProcessInstaller1.Password = null;
+            this.LidStatusServiceProcessInstaller1.Username = null;
             // 
-            // serviceInstaller1
+            // LidStatusServiceInstaller
             // 
-            this.serviceInstaller1.ServiceName = "LidStatusService";
+            this.LidStatusServiceInstaller.Description = "Lid Status";
+            this.LidStatusServiceInstaller.DisplayName = "Lid Status Service";
+            this.LidStatusServiceInstaller.ServiceName = "LidStatusService";
             // 
             // ProjectInstaller
             // 
             this.Installers.AddRange(new System.Configuration.Install.Installer[] {
-            this.serviceProcessInstaller1,
-            this.serviceInstaller1});
+            this.LidStatusServiceProcessInstaller1,
+            this.LidStatusServiceInstaller});
 
         }
 
         #endregion
 
-        private System.ServiceProcess.ServiceProcessInstaller serviceProcessInstaller1;
-        private System.ServiceProcess.ServiceInstaller serviceInstaller1;
+        private System.ServiceProcess.ServiceProcessInstaller LidStatusServiceProcessInstaller1;
+        private System.ServiceProcess.ServiceInstaller LidStatusServiceInstaller;
     }
 }
