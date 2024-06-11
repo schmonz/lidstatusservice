@@ -1,13 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.ServiceProcess;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace LidStatusService
 {
@@ -28,9 +21,9 @@ namespace LidStatusService
 
             Action<bool> lidEventHandler = status => Log("{0}: Lid status: {1}", DateTime.Now, status);
                 
-            var registeredNotficationsSuccess = _lid.RegisterLidEventNotifications(ServiceHandle, ServiceName, lidEventHandler);
+            var registeredNotificationsSuccess = _lid.RegisterLidEventNotifications(ServiceHandle, ServiceName, lidEventHandler);
 
-            Log("{0}: Notifications registered? {1}", DateTime.Now, registeredNotficationsSuccess);
+            Log("{0}: Notifications registered? {1}", DateTime.Now, registeredNotificationsSuccess);
         }
 
         protected override void OnStop()
@@ -40,7 +33,6 @@ namespace LidStatusService
 
         private static void Log(string format, params object[] arg)
         {
-            // Do logging here
             using (var sw = new StreamWriter(@"C:\powerstatus.txt", true))
             {
                 sw.WriteLine(format, arg);

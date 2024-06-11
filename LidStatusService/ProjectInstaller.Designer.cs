@@ -1,6 +1,6 @@
 ﻿namespace LidStatusService
 {
-    partial class ProjectInstaller
+    abstract partial class ProjectInstaller
     {
         /// <summary>
         /// Required designer variable.
