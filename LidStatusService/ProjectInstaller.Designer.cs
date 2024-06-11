@@ -28,14 +28,14 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.LidStatusServiceProcessInstaller1 = new System.ServiceProcess.ServiceProcessInstaller();
+            this.LidStatusServiceProcessInstaller = new System.ServiceProcess.ServiceProcessInstaller();
             this.LidStatusServiceInstaller = new System.ServiceProcess.ServiceInstaller();
             // 
-            // LidStatusServiceProcessInstaller1
+            // LidStatusServiceProcessInstaller
             // 
-            this.LidStatusServiceProcessInstaller1.Account = System.ServiceProcess.ServiceAccount.LocalSystem;
-            this.LidStatusServiceProcessInstaller1.Password = null;
-            this.LidStatusServiceProcessInstaller1.Username = null;
+            this.LidStatusServiceProcessInstaller.Account = System.ServiceProcess.ServiceAccount.LocalSystem;
+            this.LidStatusServiceProcessInstaller.Password = null;
+            this.LidStatusServiceProcessInstaller.Username = null;
             // 
             // LidStatusServiceInstaller
             // 
@@ -46,14 +46,14 @@
             // ProjectInstaller
             // 
             this.Installers.AddRange(new System.Configuration.Install.Installer[] {
-            this.LidStatusServiceProcessInstaller1,
+            this.LidStatusServiceProcessInstaller,
             this.LidStatusServiceInstaller});
 
         }
 
         #endregion
 
-        private System.ServiceProcess.ServiceProcessInstaller LidStatusServiceProcessInstaller1;
+        private System.ServiceProcess.ServiceProcessInstaller LidStatusServiceProcessInstaller;
         private System.ServiceProcess.ServiceInstaller LidStatusServiceInstaller;
     }
 }

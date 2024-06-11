@@ -31,6 +31,7 @@
             // 
             // LidStatusService
             // 
+            this.CanHandlePowerEvent = true;
             this.ServiceName = "LidStatusService";
 
         }
