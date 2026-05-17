@@ -8,25 +8,58 @@ C# project is retired.
 
 ## Honest scope note about XP
 
-Windows XP has no documented lid-state notification API. The clean
-`RegisterPowerSettingNotification` / `GUID_LIDSWITCH_STATE_CHANGE` path
-arrived in Vista. Real options on XP:
+Windows XP has no *clean documented* lid-state notification API — the
+nice `RegisterPowerSettingNotification` / `GUID_LIDSWITCH_STATE_CHANGE`
+path arrived in Vista. There are, however, several informal paths that
+plausibly work on XP in user mode; we treat picking the best one as a
+discovery task (see Phase 4a) rather than a foregone conclusion.
 
-1. **`WM_POWERBROADCAST` proxy.** Most laptops are configured so lid
-   close triggers `PBT_APMSUSPEND` and lid open triggers
-   `PBT_APMRESUMEAUTOMATIC` / `PBT_APMRESUMESUSPEND`. This is the
-   approach this plan adopts for XP. It only fires when the OEM has
-   wired lid to sleep — which on XP-era hardware is the default. If a
-   user has set "Do nothing" for lid-close in Power Options, XP will
-   produce no signal and there is nothing we can do about it from user
-   mode.
-2. `RegisterDeviceNotification` with a lid device interface GUID. Works
-   on XP but only signals device arrival/removal, not open/close.
-3. ACPI driver hooks. Undocumented, kernel-mode, out of scope.
+Candidate XP signal sources, with rough confidence:
 
-The plan therefore promises "best-effort lid event detection" on XP and
-"authoritative lid state" on Vista+. The runtime picks the better source
-automatically.
+1. **HID system-control lid usage.** The USB-IF HID Usage Tables define
+   a Generic Desktop usage for the lid switch. Laptops whose firmware
+   exposes the lid as a HID system-control collection let you open the
+   HID device with `CreateFile` and read state changes with
+   `ReadFile` / `HidP_GetUsageValue`. XP shipped full HID support, so
+   this is viable where the hardware cooperates. Caveat: many laptops
+   wire lid straight through ACPI to the kernel button driver and
+   don't expose it as HID — has to be probed on real hardware.
+2. **WMI ACPI providers under `root\wmi`.** The `MSAcpi_*` namespace
+   exists on XP and exposes events the BIOS publishes via WMI. If a
+   vendor's ACPI table publishes a lid notify, an
+   `__InstanceModificationEvent` subscription will see it. Worth a few
+   minutes in `wbemtest` on a representative XP VM to confirm what's
+   actually populated.
+3. **`RegisterDeviceNotification` + `DBT_CUSTOMEVENT`.** This isn't
+   just arrival/removal — `DBT_CUSTOMEVENT` lets a driver push
+   driver-defined state. Whether the in-box XP ACPI button driver
+   publishes lid state this way (vs only via the kernel power
+   manager) is the open question. OEM helpers like Dell QuickSet hook
+   this mechanism but typically with their own filter driver.
+4. **`WM_POWERBROADCAST` proxy.** Most XP-era laptops are configured
+   so lid close triggers `PBT_APMSUSPEND` and lid open triggers
+   `PBT_APMRESUMEAUTOMATIC` / `PBT_APMRESUMESUSPEND`. Always works as
+   a proxy when the user has sleep-on-lid set; never gives true state
+   if they've set "Do nothing".
+5. **ACPI driver hooks / kernel filter.** Undocumented, kernel-mode,
+   out of scope here.
+
+Ground-truth references worth reading before settling on an approach:
+
+- **Wine source** — `dlls/user32/` and `dlls/powrprof/`. Wine
+  implements `RegisterPowerSettingNotification`; comments tend to
+  cite the real Windows mechanism backing each `GUID_*`.
+- **ReactOS source** — reimplements the XP-era power stack and the
+  ACPI button driver, so if anything publishes lid state to user
+  mode on XP, ReactOS will show the path.
+- **Linux `/proc/acpi/button/lid/LID*/state`** — not directly useful,
+  but identifies which ACPI object firmware exposes lid on, which
+  bounds what a WMI provider on XP could expose.
+
+The plan therefore promises "authoritative lid state" on Vista+ and
+"best-effort lid event detection" on XP, with the actual XP backend
+chosen empirically in Phase 4a. The runtime picks the best available
+source automatically.
 
 ## Goals
 
@@ -191,21 +224,62 @@ working state. The C# build stays the supported binary until phase 7.
 - Tests run in CI under Wine (`wine bin/lidstatusservice-tests.exe`).
   Wine handles this kind of pure user-mode C just fine.
 
-### Phase 4 — XP fallback (3–5 days)
+### Phase 4a — XP discovery spike (1–2 days)
 
-- `lid_xp.c` registers `SERVICE_CONTROL_POWEREVENT` interest and
-  interprets `PBT_APMSUSPEND` as "closed", `PBT_APMRESUMEAUTOMATIC`
-  (and `PBT_APMRESUMESUSPEND` for older XP) as "opened". This works
-  on XP without any Vista-only API.
-- `lid_select.c` falls back to this on XP.
-- README documents the XP caveat (signal depends on the user's
-  power scheme having "sleep on lid close").
-- Verify on an XP SP3 VM. This is the only phase that requires an XP
-  VM; everything else stays toolchain-independent.
+The goal is to find the *best* XP signal source on representative
+hardware before committing the code. Timebox aggressively; if
+nothing better than the `WM_POWERBROADCAST` proxy survives, ship
+the proxy and move on.
 
-A useful side effect: `lid_xp.c` also works on Vista+ if the user
-explicitly forces the XP backend with a `--force-xp-source` flag —
-handy for testing the fallback on machines that aren't XP.
+Spike checklist, on at least one real XP SP3 laptop (or VirtualBox
+with an XP VM and a USB lid emulator; failing that, ReactOS as a
+secondary):
+
+1. Enumerate HID devices with `SetupDiGetClassDevs` against
+   `GUID_DEVINTERFACE_HID`. For each, open the device, fetch the
+   preparsed report data with `HidD_GetPreparsedData` +
+   `HidP_GetCaps`, and check whether any input report exposes the
+   Generic Desktop lid usage. If yes, attempt a `ReadFile` loop and
+   physically toggle the lid; record whether state changes arrive.
+2. Connect to `\\.\root\wmi` with WMI and dump the `MSAcpi_*`
+   classes. Subscribe to `__InstanceModificationEvent` on the
+   plausible candidates and toggle the lid; record what fires.
+3. Register for device notifications with `GUID_DEVCLASS_SYSTEM`
+   (and any plausible interface GUID found via SetupDi) and watch
+   for `DBT_CUSTOMEVENT` payloads on lid toggle.
+4. Confirm baseline: `WM_POWERBROADCAST` proxy fires on
+   sleep-on-lid configurations.
+
+Each probe is a 50–200-line throwaway in `spikes/xp/`. Output is a
+one-page report (committed) recording what worked, on what hardware,
+and how reliably.
+
+Outcome: a ranked list of XP signal sources backed by evidence.
+Phase 4 implements the winner; subsequent positions become
+documented `--xp-source=hid|wmi|devnotify|powerbroadcast` fallbacks
+for users on hardware where the default doesn't fire.
+
+### Phase 4 — XP backend (3–5 days)
+
+- `lid_xp.c` implements the source that won Phase 4a, behind the
+  same `lid_source_t` interface used by `lid_vista.c`.
+- `lid_xp_powerbroadcast.c` is implemented unconditionally as the
+  always-available fallback: registers `SERVICE_CONTROL_POWEREVENT`
+  interest and interprets `PBT_APMSUSPEND` as "closed",
+  `PBT_APMRESUMEAUTOMATIC` (and `PBT_APMRESUMESUSPEND` for older
+  XP) as "opened". No Vista-only API.
+- `lid_select.c` chain: Vista+ source if available, else the
+  winning XP source if its probe succeeds on this machine, else
+  the power-broadcast proxy.
+- A `--xp-source=` flag overrides the auto-pick for diagnosis and
+  for letting Vista+ users exercise the fallback paths without an
+  XP VM.
+- README documents the XP behavior matrix (which backend fires on
+  which configurations, and the sleep-on-lid caveat for the
+  proxy).
+- Verify on the XP SP3 VM used in Phase 4a. This is the only
+  phase that requires an XP VM; everything else stays
+  toolchain-independent.
 
 ### Phase 5 — Script runner (2 days)
 
@@ -315,8 +389,16 @@ Phases 0–3 are the riskiest because they set the foundation; phases
 
 1. Is XP SP3 acceptable as the floor, or do you want SP2? (SP3 is
    what most of the world ran; SP2 changes some service APIs.)
-2. Are you OK with the "lid behavior on XP depends on power scheme"
-   caveat in the README?
+2. How much time should Phase 4a's discovery spike consume before
+   we fall back to the `WM_POWERBROADCAST` proxy as the default?
+   The plan currently budgets 1–2 days; a finding of "HID works
+   universally on representative hardware" would justify more.
+3. Do you have an XP-era laptop available, or should the spike
+   target a VM (and accept that lid events in a VM are emulated
+   and may not reflect real hardware behavior)?
+4. Are you OK with the "lid behavior on XP depends on power scheme"
+   caveat in the README *if* the proxy ends up being the chosen
+   backend?
 3. Code-signing cert available for release artifacts, or skip?
 4. Should the user script be PowerShell-only (matches current
    README), or any executable? Going with "any executable, you
